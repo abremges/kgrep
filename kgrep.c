@@ -24,7 +24,7 @@
 */
 #define PROGRAM "kgrep"
 #define DESCR   "grep with k-mers"
-#define VERSION "0.6.1"
+#define VERSION "0.6.2"
 #define AUTHOR  "Andreas Bremges"
 #define CONTACT "andreas@cebitec.uni-bielefeld.de"
 
