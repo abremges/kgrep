@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Wall -O3
+CFLAGS=-Wall -pedantic -std=gnu99 -O3
 
 kgrep:kgrep.c kseq.h
 	$(CC) $(CFLAGS) kgrep.c -o $@ -lz
