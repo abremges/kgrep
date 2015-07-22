@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2014 Andreas Bremges <andreas@cebitec.uni-bielefeld.de>
+   Copyright (c) 2014, 2015 Andreas Bremges <andreas@cebitec.uni-bielefeld.de>
 
    Permission is hereby granted, free of charge, to any person obtaining
    a copy of this software and associated documentation files (the
@@ -22,17 +22,19 @@
    CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE.
 */
+
 #define PROGRAM "kgrep"
 #define DESCR   "grep with k-mers"
-#define VERSION "0.6.2"
+#define VERSION "0.7.0-alpha"
 #define AUTHOR  "Andreas Bremges"
 #define CONTACT "andreas@cebitec.uni-bielefeld.de" // TODO Too much information...
 
-#include <stdint.h> // uint64_t
-#include <stdio.h> // printf
-#include <sys/time.h> // gettimeofday (obsolescent)
-#include <unistd.h> // getopt
-#include <zlib.h> // gzip
+#include <math.h>     // pow
+#include <stdint.h>   // uint64_t
+#include <stdio.h>    // printf
+#include <sys/time.h> // gettimeofday
+#include <unistd.h>   // getopt
+#include <zlib.h>     // gzip
 
 #include "kseq.h"
 KSEQ_INIT(gzFile, gzread)
@@ -50,13 +52,15 @@ typedef uint64_t task_t;
 #define FLAG_I 0x20
 #define FLAG_C 0x40
 #define FLAG_V 0x80
+// TODO Replace flag stuff with nice struct
 
 #define LOGMOD 100000
 
 static double start;
 static uint64_t *kmers;
-static int k = 16;
+static int k = 17;
 static int d = 1;
+static double max_error = 0.02;
 static int flag = 0;
 
 // A = 00, C = 01, G = 10, T = 11, i.e. XOR with 3 -> compl.
@@ -71,6 +75,7 @@ unsigned char seq_fwd_table[128] = {
     4, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
 };
 
+// TODO Taken from ...
 double realtime() {
     struct timeval tp;
     struct timezone tzp;
@@ -78,6 +83,7 @@ double realtime() {
     return tp.tv_sec + tp.tv_usec * 1e-6;
 }
 
+// TODO Taken from ...
 void stk_printseq(const kseq_t *s) {
     fputc(s->qual.l? '@' : '>', stdout);
     fputs(s->name.s, stdout);
@@ -93,6 +99,24 @@ void stk_printseq(const kseq_t *s) {
         fputs(s->qual.s, stdout);
         fputc('\n', stdout);
     }
+}
+
+// TODO incorporate all logic in here (d, n)
+int guess_errors(const kseq_t *seq, const int phred_offset) {
+	if (seq->qual.l) {
+		double p_sum = 0; // TODO init with 1 to round up? Harder to read.
+	    for (int i = 0; i < seq->qual.l; ++i) {
+	        // Q = Phred quality score, P = base-calling error probability
+	        // Then: Q = -10*log_10(P) <=> P = 10^(-Q/10)
+	        int q_e = (int)seq->qual.s[i]-phred_offset;
+	        double p_e = pow(10,(-q_e/10.0));
+	        p_sum += p_e;
+	    }
+	    // Pick min(auto,max) as the guesstimate
+	    return ((int)p_sum+1 < seq->seq.l*max_error+1) ? (int)p_sum+1 : seq->seq.l*max_error+1; // TODO ceiling vs. floor (pessimistic vs. most probable)
+	} else {
+		return seq->seq.l*max_error+1;
+	}
 }
 
 int hash_read(const kseq_t *seq, const task_t task) {
@@ -271,15 +295,19 @@ static int usage() {
 	fprintf(stderr, "       -p         <in1.fq> consists of interleaved mates (i.e. shuffled reads)\n");
 	fprintf(stderr, "       -x         enable on-the-fly recruitment seed expansion (GREEDY and EXPERIMENTAL)\n\n");
 
-	fprintf(stderr, "       -k INT     k-mer size (15 <= k <= 18), requires 4^(k-1) bytes of RAM (15:256M, 16:1G, 17:4G, 18:16G) [%i]\n\n", k);
+	fprintf(stderr, "       -k INT     k-mer size (15 <= k <= 21), requires 4^(k-1) bytes of RAM (15:256M, 16:1G, 17:4G, 18:16G, ...) [%i]\n\n", k);
 
-	fprintf(stderr, "       -d INT     min. allowed edit distance (q-gram lemma applied: hits_per_read = readlength - k+1 - d*k) [%i]\n", d);
+	fprintf(stderr, "       -e FLOAT   default: automatically determine the expected error rate based on Phred quality scores with an upper limit [%.2f]\n", max_error);
+	fprintf(stderr, "       -d INT     alternatively: min. allowed edit distance (q-gram lemma applied: hits_per_read = readlength - k+1 - d*k) [%i]\n", 0); // TODO not really edit distance, but smth. else
 	fprintf(stderr, "       -n INT     alternatively: fixed number of required hits per read [%i]\n\n", 0);
-//	fprintf(stderr, "       -r FLOAT   alternatively: ratio of known k-mers per read [%.2f]\n\n", 0.0);
 
 	fprintf(stderr, "       -i FILE    ignore sequence patterns in FILE (e.g. adapter sequences) [null]\n");
+    fprintf(stderr, "       --strict   require hits in both mates (?)\n"); // TODO
 	fprintf(stderr, "       -c         print only a count of recruited sequences\n");
 	fprintf(stderr, "       -v         select non-matching sequences\n\n");
+
+	fprintf(stderr, "       -h         minimal help message\n");
+	fprintf(stderr, "       --help     extended help message\n\n"); // TODO 
 
 	return 42;
 }
@@ -289,7 +317,8 @@ int main(int argc, char *argv[]) {
 	char *seed = 0, *in1 = 0, *in2 = 0;
 	char *ignore = 0;
 	int c;
-	while((c = getopt(argc, argv, "pxk:d:n:i:cv")) != -1) {
+	// TODO getopt_long ?
+	while((c = getopt(argc, argv, "pxk:e:d:n:i:cvh")) != -1) {
 		switch (c) {
 			case 'p':
 				flag |= FLAG_P;
@@ -300,7 +329,13 @@ int main(int argc, char *argv[]) {
 			case 'k':
 				k = atoi(optarg);
 				if (k < 15) k = 15;
-				if (k > 18) k = 18;
+				if (k > 21) k = 21; // Yes, that's 1TB of RAM
+				break;
+			case 'e':
+				if (flag&FLAG_N) return usage();
+				flag |= FLAG_D; // TODO adjust flag stuff
+				max_error = atof(optarg);
+				if (max_error > 1.0) max_error = 1.0; // TODO Print warning if max_error > some threshold
 				break;
 			case 'd':
 				if (flag&FLAG_N) return usage();
@@ -324,6 +359,7 @@ int main(int argc, char *argv[]) {
 			case 'v':
 				flag |= FLAG_V;
 				break;
+			case 'h': // TODO zero exit code on usage explicitely called
 			default:
 				return usage();
 		}
@@ -335,7 +371,7 @@ int main(int argc, char *argv[]) {
 	if (optind + 2 == argc) {
 		seed = argv[optind];
 		in1 = argv[optind+1];
-	} else if (optind + 3 == argc && !(flag&FLAG_P)) {
+	} else if (optind + 3 == argc && !(flag&FLAG_P)) { // TODO Rather print warning and ignore in2?
 		seed = argv[optind];
 		in1 = argv[optind+1];
 		in2 = argv[optind+2];
