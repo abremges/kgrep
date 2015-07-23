@@ -60,8 +60,9 @@ static double start;
 static uint64_t *kmers;
 static int k = 17;
 static int d = 1;
-static double max_error = 0.02;
+static double max_error = 0.01;
 static int flag = 0;
+static int phred_offset = 64; // TODO
 
 // A = 00, C = 01, G = 10, T = 11, i.e. XOR with 3 -> compl.
 unsigned char seq_fwd_table[128] = {
@@ -101,21 +102,30 @@ void stk_printseq(const kseq_t *s) {
     }
 }
 
-// TODO incorporate all logic in here (d, n)
-int guess_errors(const kseq_t *seq, const int phred_offset) {
+int get_min_hits(const kseq_t *seq) {
+	if (flag&FLAG_D) return seq->seq.l - k+1 - d*k; // calculate based on min allowed edit distance
+	if (flag&FLAG_N) return d; // fixed number of required hits (d overloaded)
 	if (seq->qual.l) {
 		double p_sum = 0; // TODO init with 1 to round up? Harder to read.
 	    for (int i = 0; i < seq->qual.l; ++i) {
 	        // Q = Phred quality score, P = base-calling error probability
 	        // Then: Q = -10*log_10(P) <=> P = 10^(-Q/10)
-	        int q_e = (int)seq->qual.s[i]-phred_offset;
+	        int q_e = seq->qual.s[i]-phred_offset;
 	        double p_e = pow(10,(-q_e/10.0));
 	        p_sum += p_e;
 	    }
+	    //fprintf(stderr, "[%.2f] %f | %f\n", (realtime()-start), seq->seq.l*max_error, p_sum);
+	    int exp_max_e = seq->seq.l*max_error+1;
+	    int exp_phred_e = p_sum+1; // TODO We calculate the ceiling here rather than taking the double as inout for formula - think about it!
 	    // Pick min(auto,max) as the guesstimate
-	    return ((int)p_sum+1 < seq->seq.l*max_error+1) ? (int)p_sum+1 : seq->seq.l*max_error+1; // TODO ceiling vs. floor (pessimistic vs. most probable)
+	    if (exp_max_e <= exp_phred_e) {
+	    	return seq->seq.l - k+1 - exp_max_e*k;
+	    } else {
+	    	return seq->seq.l - k+1 - exp_phred_e*k;
+	    }
 	} else {
-		return seq->seq.l*max_error+1;
+		int exp_max_e = seq->seq.l*max_error+1;
+		return seq->seq.l - k+1 - exp_max_e*k;
 	}
 }
 
@@ -182,7 +192,7 @@ void recruit_pe(const char *file1, const char *file2, const task_t task) {
 	while (kseq_read(fqrec1) >= 0 && kseq_read(fqrec2) >= 0) {
 		counter += 2;
 		int n1, n2;
-		if ((n1 = fqrec1->seq.l - k+1 - d*k) > 0 && (n2 = fqrec2->seq.l - k+1 - d*k) > 0) {
+		if ((n1 = get_min_hits(fqrec1)) > 0 && (n2 = get_min_hits(fqrec2)) > 0) {
 			int khits1, khits2;
 			if ((khits1 = hash_read(fqrec1, task)) >= n1 && (khits2 = hash_read(fqrec2, task)) >= n2) { // TODO allow OR and AND when recruiting pairs
 				if (!(flag&FLAG_V)) {
@@ -212,39 +222,6 @@ void recruit_pe(const char *file1, const char *file2, const task_t task) {
 		fqrec2->f = tmp;		// Take care of the original kstream, see above.
 		kseq_destroy(fqrec2);   // TODO Check if we need to free or delete tmp
 	}
-    fprintf(stderr, "[%.2f] Recruited %i reads from %i reads\n", (realtime()-start), counter2, counter);
-}
-
-void recruit_se(const char *file1, const task_t task) {
-	gzFile fp1 = strcmp(file1, "-") ? gzopen(file1, "r") : gzdopen(fileno(stdin), "r");
-	kseq_t *fqrec1 = kseq_init(fp1);
-
-    fprintf(stderr, "[%.2f] Now recruiting single reads from %s\n", (realtime()-start), file1);
-
-	static int counter, counter2;
-	while (kseq_read(fqrec1) >= 0) {
-		counter += 1;
-		int n1;
-		if ((n1 = fqrec1->seq.l - k+1 - d*k) > 0) {
-			int khits1;
-			if ((khits1 = hash_read(fqrec1, task)) >= n1) {
-				if (!(flag&FLAG_V)) {
-					counter2 += 1;
-					stk_printseq(fqrec1);
-				}
-				if (flag&FLAG_X) {
-					hash_read(fqrec1, WHITE);
-				}
-			} else if (flag&FLAG_V) {
-				counter2 += 1;
-				stk_printseq(fqrec1);
-			}
-		}
-		if (counter%LOGMOD == 0) {
-			fprintf(stderr, "[%.2f] %i / %i\n", (realtime()-start), counter2, counter); // TODO \r instead of \n? Nicer progress bar...
-		}
-	}
-	kseq_destroy(fqrec1); gzclose(fp1);
     fprintf(stderr, "[%.2f] Recruited %i reads from %i reads\n", (realtime()-start), counter2, counter);
 }
 
@@ -332,8 +309,6 @@ int main(int argc, char *argv[]) {
 				if (k > 21) k = 21; // Yes, that's 1TB of RAM
 				break;
 			case 'e':
-				if (flag&FLAG_N) return usage();
-				flag |= FLAG_D; // TODO adjust flag stuff
 				max_error = atof(optarg);
 				if (max_error > 1.0) max_error = 1.0; // TODO Print warning if max_error > some threshold
 				break;
@@ -364,7 +339,6 @@ int main(int argc, char *argv[]) {
 				return usage();
 		}
 	}
-	if (!(flag&FLAG_N)) flag |= FLAG_D;
     // TODO This whole flag stuff is rather ugly...
 
 	// TODO Re-write more elegant
@@ -410,7 +384,7 @@ int main(int argc, char *argv[]) {
 		recruit_pe(in1, 0, RECRUIT);
     }
 	else {
-		recruit_se(in1, RECRUIT);
+		//TODO recruit_se(in1, RECRUIT);
     }
 	free(kmers);
 	fprintf(stderr, "[%.2f] Done. Thank you!\n", (realtime()-start));
