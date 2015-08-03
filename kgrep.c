@@ -66,57 +66,57 @@ static int phred_offset = 64; // TODO
 
 // A = 00, C = 01, G = 10, T = 11, i.e. XOR with 3 -> compl.
 unsigned char seq_fwd_table[128] = {
-    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
 };
 
 // TODO Taken from ...
 double realtime() {
-    struct timeval tp;
-    struct timezone tzp;
-    gettimeofday(&tp, &tzp);
-    return tp.tv_sec + tp.tv_usec * 1e-6;
+	struct timeval tp;
+	struct timezone tzp;
+	gettimeofday(&tp, &tzp);
+	return tp.tv_sec + tp.tv_usec * 1e-6;
 }
 
 // TODO Taken from ...
 void stk_printseq(const kseq_t *s) {
-    fputc(s->qual.l? '@' : '>', stdout);
-    fputs(s->name.s, stdout);
-    if (s->comment.l) {
-        fputc(' ', stdout);
-        fputs(s->comment.s, stdout);
-    }
-    fputc('\n', stdout);
-    fputs(s->seq.s, stdout);
-    fputc('\n', stdout);
-    if (s->qual.l) {
-        fputs("+\n", stdout);
-        fputs(s->qual.s, stdout);
-        fputc('\n', stdout);
-    }
+	fputc(s->qual.l? '@' : '>', stdout);
+	fputs(s->name.s, stdout);
+	if (s->comment.l) {
+		fputc(' ', stdout);
+		fputs(s->comment.s, stdout);
+	}
+	fputc('\n', stdout);
+	fputs(s->seq.s, stdout);
+	fputc('\n', stdout);
+	if (s->qual.l) {
+		fputs("+\n", stdout);
+		fputs(s->qual.s, stdout);
+		fputc('\n', stdout);
+	}
 }
 
 int get_min_hits(const kseq_t *seq) {
 	if (flag&FLAG_D) return seq->seq.l - k+1 - d*k; // calculate based on min allowed edit distance
 	if (flag&FLAG_N) return d; // fixed number of required hits (d overloaded)
 	if (seq->qual.l) {
-		double p_sum = 0; // TODO init with 1 to round up? Harder to read.
-	    for (int i = 0; i < seq->qual.l; ++i) {
+		double p_sum = 0;
+		for (int i = 0; i < seq->qual.l; ++i) {
 	        // Q = Phred quality score, P = base-calling error probability
 	        // Then: Q = -10*log_10(P) <=> P = 10^(-Q/10)
-	        int q_e = seq->qual.s[i]-phred_offset;
-	        double p_e = pow(10,(-q_e/10.0));
+			int q_e = seq->qual.s[i]-phred_offset;
+	        double p_e = pow(10,(-q_e/10.0)); // TODO can this be done faster?
 	        p_sum += p_e;
 	    }
 	    //fprintf(stderr, "[%.2f] %f | %f\n", (realtime()-start), seq->seq.l*max_error, p_sum);
 	    int exp_max_e = seq->seq.l*max_error+1;
-	    int exp_phred_e = p_sum+1; // TODO We calculate the ceiling here rather than taking the double as inout for formula - think about it!
+	    int exp_phred_e = p_sum+1; // TODO We calculate the ceiling here rather than taking the double as input for formula - think about it!
 	    // Pick min(auto,max) as the guesstimate
 	    if (exp_max_e <= exp_phred_e) {
 	    	return seq->seq.l - k+1 - exp_max_e*k;
@@ -153,7 +153,7 @@ int hash_read(const kseq_t *seq, const task_t task) {
 				uint64_t z = ((forward < reverse) ? forward : reverse);
 				if ((kmers[z>>5]>>((z&31)<<1)&3) < task) {
 					kmers[z>>5] |= (task << ((z&31)<<1));
-                    khits++;
+					khits++;
 				}
 			} else { // recruitment step
 				uint64_t z = ((forward < reverse) ? forward : reverse);
@@ -178,11 +178,11 @@ void recruit_pe(const char *file1, const char *file2, const task_t task) {
 	kstream_t *tmp = NULL;
 
 	if (file2) {
-        fprintf(stderr, "[%.2f] Now recruiting paired reads from %s and %s\n", (realtime()-start), file1, file2);
+		fprintf(stderr, "[%.2f] Now recruiting paired reads from %s and %s\n", (realtime()-start), file1, file2);
 		fp2 = gzopen(file2, "r");
 		fqrec2 = kseq_init(fp2);
 	} else {
-        fprintf(stderr, "[%.2f] Now recruiting interleaved pairs from %s\n", (realtime()-start), file1);
+		fprintf(stderr, "[%.2f] Now recruiting interleaved pairs from %s\n", (realtime()-start), file1);
 		fqrec2 = kseq_init(fp1);
 		tmp = fqrec2->f;		// Maybe this can be handled more elegantly?
 		fqrec2->f = fqrec1->f;	// fqrec1 and fqrec2 now share one kstream.
@@ -222,11 +222,11 @@ void recruit_pe(const char *file1, const char *file2, const task_t task) {
 		fqrec2->f = tmp;		// Take care of the original kstream, see above.
 		kseq_destroy(fqrec2);   // TODO Check if we need to free or delete tmp
 	}
-    fprintf(stderr, "[%.2f] Recruited %i reads from %i reads\n", (realtime()-start), counter2, counter);
+	fprintf(stderr, "[%.2f] Recruited %i reads from %i reads\n", (realtime()-start), counter2, counter);
 }
 
 void hash_file(const char *file, const task_t task) {
-    if (task == WHITE) {
+	if (task == WHITE) {
         fprintf(stderr, "[%.2f] Now whitelisting from %s\n", (realtime()-start), file); // TODO Some fancy foo ? bar : baz
     } else if (task == IGNORE) {
         fprintf(stderr, "[%.2f] Now ignorelisting from %s\n", (realtime()-start), file); // TODO Or move back down
@@ -235,24 +235,24 @@ void hash_file(const char *file, const task_t task) {
         exit(1);
     }
 
-	gzFile fp = strcmp(file, "-") ? gzopen(file, "r") : gzdopen(fileno(stdin), "r");
-	kseq_t *seq = kseq_init(fp);
+    gzFile fp = strcmp(file, "-") ? gzopen(file, "r") : gzdopen(fileno(stdin), "r");
+    kseq_t *seq = kseq_init(fp);
 
     static int readcount, kmercount;
-	while (kseq_read(seq) >= 0) {
-        readcount += 1;
-		kmercount += hash_read(seq, task);
-	}
-	kseq_destroy(seq);
-	gzclose(fp);
+    while (kseq_read(seq) >= 0) {
+    	readcount += 1;
+    	kmercount += hash_read(seq, task);
+    }
+    kseq_destroy(seq);
+    gzclose(fp);
 
     if (task == WHITE) {
-        fprintf(stderr, "[%.2f] Whitelisted %i %i-mers from %i reads\n", (realtime()-start), kmercount, k, readcount);
+    	fprintf(stderr, "[%.2f] Whitelisted %i %i-mers from %i reads\n", (realtime()-start), kmercount, k, readcount);
     } else if (task == IGNORE) {
-        fprintf(stderr, "[%.2f] Ignorelisted %i %i-mers from %i reads\n", (realtime()-start), kmercount, k, readcount);
+    	fprintf(stderr, "[%.2f] Ignorelisted %i %i-mers from %i reads\n", (realtime()-start), kmercount, k, readcount);
     } else {
-        fprintf(stderr, "[%.2f] I don't know what I just did.\n", (realtime()-start));
-        exit(1);
+    	fprintf(stderr, "[%.2f] I don't know what I just did.\n", (realtime()-start));
+    	exit(1);
     }
 }
 
@@ -280,10 +280,10 @@ static int usage() {
 
 	fprintf(stderr, "       -i FILE    ignore sequence patterns in FILE (e.g. adapter sequences) [null]\n");
     fprintf(stderr, "       --strict   require hits in both mates (?)\n"); // TODO
-	fprintf(stderr, "       -c         print only a count of recruited sequences\n");
-	fprintf(stderr, "       -v         select non-matching sequences\n\n");
+    fprintf(stderr, "       -c         print only a count of recruited sequences\n");
+    fprintf(stderr, "       -v         select non-matching sequences\n\n");
 
-	fprintf(stderr, "       -h         minimal help message\n");
+    fprintf(stderr, "       -h         minimal help message\n");
 	fprintf(stderr, "       --help     extended help message\n\n"); // TODO 
 
 	return 42;
@@ -298,45 +298,45 @@ int main(int argc, char *argv[]) {
 	while((c = getopt(argc, argv, "pxk:e:d:n:i:cvh")) != -1) {
 		switch (c) {
 			case 'p':
-				flag |= FLAG_P;
-				break;
+			flag |= FLAG_P;
+			break;
 			case 'x':
-				flag |= FLAG_X;
-				break;
+			flag |= FLAG_X;
+			break;
 			case 'k':
-				k = atoi(optarg);
-				if (k < 15) k = 15;
+			k = atoi(optarg);
+			if (k < 15) k = 15;
 				if (k > 21) k = 21; // Yes, that's 1TB of RAM
 				break;
-			case 'e':
+				case 'e':
 				max_error = atof(optarg);
 				if (max_error > 1.0) max_error = 1.0; // TODO Print warning if max_error > some threshold
 				break;
-			case 'd':
+				case 'd':
 				if (flag&FLAG_N) return usage();
 				flag |= FLAG_D;
 				d = atoi(optarg);
 				if (d < 0) d = 0;
 				break;
-			case 'n':
+				case 'n':
 				if (flag&FLAG_D) return usage();
 				flag |= FLAG_N;
 				d = atoi(optarg);
 				if (d < 0) d = 0;
 				break;
-			case 'i':
+				case 'i':
 				flag |= FLAG_I;
 				ignore = optarg;
 				break;
-			case 'c':
+				case 'c':
 				flag |= FLAG_C;
 				break;
-			case 'v':
+				case 'v':
 				flag |= FLAG_V;
 				break;
 			case 'h': // TODO zero exit code on usage explicitely called
 			default:
-				return usage();
+			return usage();
 		}
 	}
     // TODO This whole flag stuff is rather ugly...
@@ -372,20 +372,20 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 	if (ignore) {
-        hash_file(ignore, IGNORE);
-    }
+		hash_file(ignore, IGNORE);
+	}
 	if (seed) {
-        hash_file(seed, WHITE);
-    }
+		hash_file(seed, WHITE);
+	}
 	if (in1 && in2) {
 		recruit_pe(in1, in2, RECRUIT);
-    }
+	}
 	else if (flag&FLAG_P) {
 		recruit_pe(in1, 0, RECRUIT);
-    }
+	}
 	else {
 		//TODO recruit_se(in1, RECRUIT);
-    }
+	}
 	free(kmers);
 	fprintf(stderr, "[%.2f] Done. Thank you!\n", (realtime()-start));
 
