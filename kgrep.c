@@ -25,9 +25,9 @@
 
 #define PROGRAM "kgrep"
 #define DESCR   "grep with k-mers"
-#define VERSION "0.7.0-alpha"
+#define VERSION "0.7.0"
 #define AUTHOR  "Andreas Bremges"
-#define CONTACT "andreas@cebitec.uni-bielefeld.de" // TODO Too much information...
+#define CONTACT "andreas@cebitec.uni-bielefeld.de"
 
 #include <math.h>     // pow
 #include <stdint.h>   // uint64_t
@@ -275,16 +275,16 @@ static int usage() {
 	fprintf(stderr, "       -k INT     k-mer size (15 <= k <= 21), requires 4^(k-1) bytes of RAM (15:256M, 16:1G, 17:4G, 18:16G, ...) [%i]\n\n", k);
 
 	fprintf(stderr, "       -e FLOAT   default: automatically determine the expected error rate based on Phred quality scores with an upper limit [%.2f]\n", max_error);
-	fprintf(stderr, "       -d INT     alternatively: min. allowed edit distance (q-gram lemma applied: hits_per_read = readlength - k+1 - d*k) [%i]\n", 0); // TODO not really edit distance, but smth. else
+	fprintf(stderr, "       -d INT     alternatively: min. allowed edit distance (q-gram lemma applied: hits_per_read = readlength - k+1 - d*k) [%i]\n", 0);
 	fprintf(stderr, "       -n INT     alternatively: fixed number of required hits per read [%i]\n\n", 0);
 
 	fprintf(stderr, "       -i FILE    ignore sequence patterns in FILE (e.g. adapter sequences) [null]\n");
-    fprintf(stderr, "       --strict   require hits in both mates (?)\n"); // TODO
-    fprintf(stderr, "       -c         print only a count of recruited sequences\n");
+    //fprintf(stderr, "       --strict   require hits in both mates (?)\n"); // TODO
+    //fprintf(stderr, "       -c         print only a count of recruited sequences\n");
     fprintf(stderr, "       -v         select non-matching sequences\n\n");
 
-    fprintf(stderr, "       -h         minimal help message\n");
-	fprintf(stderr, "       --help     extended help message\n\n"); // TODO 
+    //fprintf(stderr, "       -h         minimal help message\n");
+	//fprintf(stderr, "       --help     extended help message\n\n"); // TODO
 
 	return 42;
 }
@@ -384,6 +384,7 @@ int main(int argc, char *argv[]) {
 		recruit_pe(in1, 0, RECRUIT);
 	}
 	else {
+		return usage();
 		//TODO recruit_se(in1, RECRUIT);
 	}
 	free(kmers);
