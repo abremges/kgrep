@@ -1,4 +1,4 @@
-kgrep [![Build Status](https://travis-ci.com/abremges/kgrep.svg?token=Ebg4XZAcowyajM89NgpH&branch=master)](https://travis-ci.com/abremges/kgrep)
+kgrep
 =====
 
 Roughly speaking, a 'grep' for k-mers.
